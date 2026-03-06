@@ -281,14 +281,14 @@ def ask_gpt(image_path, task, history):
                     {
                         "type": "input_text",
                         "text": f"""
-Task:
-{task}
+                        Task:
+                        {task}
 
-Previous actions:
-{history_text}
+                        Previous actions:
+                        {history_text}
 
-Look at the screenshot and decide the next action.
-"""
+                        Look at the screenshot and decide the next action.
+                        """
                     },
                     {
                         "type": "input_image",
