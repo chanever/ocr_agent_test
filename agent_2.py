@@ -216,11 +216,20 @@ def execute_action(page, action_json):
         text = action.get("text")
 
         try:
-            page.fill('textarea[name="q"]', text)
+
+            # 검색창 자동 탐색
+            box = page.get_by_role("textbox").first
+
+            box.click()
+            box.fill(text)
+
             page.keyboard.press("Enter")
+
             print("⌨️ type:", text)
-        except:
-            print("⚠️ type 실패")
+
+        except Exception as e:
+
+            print("⚠️ type 실패:", e)
 
     elif action_type == "scroll":
 
