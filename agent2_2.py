@@ -56,6 +56,8 @@ Rules:
 - For click_text target, use short visible text likely on screen.
 - Avoid non-visible labels and long vague phrases.
 - Read Previous actions and avoid repeating failed actions.
+- Focus on the primary objective of the task and choose actions that directly contribute to it.
+- If you think you found the answer from the screenshot, stop and summarize the result based on the screenshot and action history.
 - Use an objective-first strategy across all websites:
 	1) Infer the primary objective from the task (e.g., minimum price, fastest route, highest rating, specific date).
 	2) Prefer controls that directly optimize or constrain that objective.
@@ -63,6 +65,11 @@ Rules:
 - Match controls semantically, not by exact words:
 	- Use nearby synonyms, abbreviations, icon meaning, and context around the control.
 	- Do not depend on one exact label string.
+- Disambiguate similar labels before clicking:
+	- If the requested target is a short/base phrase, do NOT automatically choose a longer decorated variant (promo/adjective/prefix/suffix) unless the task explicitly asks for it.
+	- Prefer the candidate whose visible label is the closest intent match (exact match > normalized exact match > minimal extra words).
+	- Avoid substring traps: "A" and "Special A" are different targets unless context proves equivalence.
+	- When two candidates remain plausible, choose the more generic/non-promotional one first.
 - Before moving on, verify the intended effect of the last important action:
 	- screenshot cues (selected tab/chip, updated list/order, changed highlighted state), or
 	- DOM cues (aria-selected/aria-pressed/value change).
@@ -136,7 +143,17 @@ MAX_CANDIDATE_TEXT = 80
 DEFAULT_START_URL = os.getenv("AGENT_START_URL", "https://www.google.com")
 DEFAULT_TASK = os.getenv(
 	"AGENT_TASK",
-	"Find the information or action requested by the task and provide a concise final summary with evidence.",
+	"""Task Description
+
+Find the cheapest round-trip flight from
+Seoul to Los Angeles.
+
+Travel dates:
+
+Departure date: March 10
+Return date: March 15
+
+Use Google Flights to search for flights.""",
 )
 
 
@@ -596,24 +613,24 @@ def execute_action(page, action):
 		"scroll_delta": None,
 	}
 
-	print("▶ 실행 action:", action)
+	print("ACTION:", action)
 	action_type = action.get("action")
 
 	if action_type == "click_text":
 		target = action.get("target")
 		ok, clicked_target = _click_with_fallback(page, target)
 		if ok:
-			print("✅ click:", clicked_target)
+			print("OK click:", clicked_target)
 			feedback["success"] = True
 			feedback["reason"] = "clicked"
 		else:
-			print("⚠️ click 실패:", target)
+			print("WARN click failed:", target)
 			feedback["reason"] = "click_target_not_found"
 
 	elif action_type == "click_candidate":
 		candidate_id = action.get("candidate_id")
 		if _click_candidate(page, candidate_id):
-			print("✅ click candidate:", candidate_id)
+			print("OK click candidate:", candidate_id)
 			feedback["success"] = True
 			feedback["reason"] = "clicked_candidate"
 		else:
@@ -621,14 +638,14 @@ def execute_action(page, action):
 			if target:
 				ok, clicked_target = _click_with_fallback(page, target)
 				if ok:
-					print("✅ click candidate fallback text:", clicked_target)
+					print("OK click candidate fallback text:", clicked_target)
 					feedback["success"] = True
 					feedback["reason"] = "clicked_candidate_fallback_text"
 				else:
-					print("⚠️ click candidate 실패:", candidate_id)
+					print("WARN click candidate failed:", candidate_id)
 					feedback["reason"] = "click_candidate_not_found"
 			else:
-				print("⚠️ click candidate 실패:", candidate_id)
+				print("WARN click candidate failed:", candidate_id)
 				feedback["reason"] = "click_candidate_not_found"
 
 	elif action_type == "type":
@@ -640,7 +657,7 @@ def execute_action(page, action):
 			if _looks_like_url(text):
 				url = _to_url(text)
 				page.goto(url, wait_until="domcontentloaded", timeout=ACTION_TIMEOUT_MS)
-				print("🌐 open:", url)
+				print("OPEN:", url)
 				feedback["success"] = True
 				feedback["reason"] = "opened_url_from_type"
 			else:
@@ -653,7 +670,7 @@ def execute_action(page, action):
 
 				if submit_after_fill and not clean_text.strip():
 					page.keyboard.press("Enter")
-					print("⌨️ submit: Enter-only")
+					print("SUBMIT: Enter-only")
 					feedback["success"] = True
 					feedback["reason"] = "submitted_enter_only"
 					try:
@@ -681,7 +698,7 @@ def execute_action(page, action):
 					page.wait_for_timeout(POST_TYPE_WAIT_MS)
 				field_value_after_action = _safe_locator_value(box)
 
-				print(f"⌨️ type(target={target}):", clean_text)
+				print(f"TYPE(target={target}):", clean_text)
 				feedback["success"] = True
 				feedback["reason"] = "typed"
 				feedback["_typed_text"] = clean_text
@@ -689,7 +706,7 @@ def execute_action(page, action):
 				feedback["_type_value_after_action"] = field_value_after_action
 
 		except Exception as e:
-			print("⚠️ type 실패:", e)
+			print("WARN type failed:", e)
 			feedback["reason"] = f"type_failed:{e}"
 
 	elif action_type == "scroll":
@@ -699,7 +716,7 @@ def execute_action(page, action):
 		feedback["scroll_before"] = before_y
 		feedback["scroll_after"] = after_y
 		feedback["scroll_delta"] = after_y - before_y
-		print(f"📜 scroll (delta={feedback['scroll_delta']})")
+		print(f"SCROLL (delta={feedback['scroll_delta']})")
 		feedback["success"] = True
 		feedback["reason"] = "scrolled"
 
@@ -710,7 +727,7 @@ def execute_action(page, action):
 		feedback["scroll_before"] = before_y
 		feedback["scroll_after"] = after_y
 		feedback["scroll_delta"] = after_y - before_y
-		print(f"📜 scroll_up (delta={feedback['scroll_delta']})")
+		print(f"SCROLL_UP (delta={feedback['scroll_delta']})")
 		feedback["success"] = True
 		feedback["reason"] = "scrolled_up"
 
@@ -720,24 +737,24 @@ def execute_action(page, action):
 			page.go_back(wait_until="domcontentloaded", timeout=ACTION_TIMEOUT_MS)
 			feedback["success"] = page.url != previous_url
 			feedback["reason"] = "went_back" if feedback["success"] else "no_back_history"
-			print("↩️ go_back")
+			print("GO_BACK")
 		except Exception as e:
-			print("⚠️ go_back 실패:", e)
+			print("WARN go_back failed:", e)
 			feedback["reason"] = f"go_back_failed:{e}"
 
 	elif action_type == "open_url":
 		try:
 			url = _to_url(action.get("url", ""))
 			page.goto(url, wait_until="domcontentloaded", timeout=ACTION_TIMEOUT_MS)
-			print("🌐 open_url:", url)
+			print("OPEN_URL:", url)
 			feedback["success"] = True
 			feedback["reason"] = "opened_url"
 		except Exception as e:
-			print("⚠️ open_url 실패:", e)
+			print("WARN open_url failed:", e)
 			feedback["reason"] = f"open_url_failed:{e}"
 
 	elif action_type == "stop":
-		print("🛑 stop action received")
+		print("STOP action received")
 		feedback["success"] = True
 		feedback["reason"] = "stop_received"
 		feedback["url_after"] = page.url
@@ -810,15 +827,15 @@ def run_agent():
 
 				screenshot_path = f"screen_{step}.png"
 				page.screenshot(path=screenshot_path)
-				print(f"📸 screenshot 저장: {screenshot_path} | url={page.url}")
+				print(f"SCREENSHOT saved: {screenshot_path} | url={page.url}")
 
 				gpt_started = time.perf_counter()
 				dom_candidates = _collect_dom_candidates(page)
 				candidate_map = {c.get("id", ""): c for c in dom_candidates}
-				print(f"🧩 dom candidates: {len(dom_candidates)}")
+				print(f"DOM candidates: {len(dom_candidates)}")
 				action_json = ask_gpt(screenshot_path, task, _trim_history(history), dom_candidates)
 				gpt_duration_ms = int((time.perf_counter() - gpt_started) * 1000)
-				print(f"🤖 GPT 응답({gpt_duration_ms}ms):", action_json)
+				print(f"GPT response ({gpt_duration_ms}ms):", action_json)
 
 				if not action_json:
 					history.append(f"STEP {step}: FAIL json_extract_failed")
@@ -910,7 +927,7 @@ def run_agent():
 				stop, executed_action, feedback = execute_action(page, action_obj)
 
 				print(
-					f"⏱️ action={feedback['duration_ms']}ms success={feedback['success']} reason={feedback['reason']}"
+					f"ACTION_TIME={feedback['duration_ms']}ms success={feedback['success']} reason={feedback['reason']}"
 				)
 
 				if executed_action is not None:
@@ -954,7 +971,7 @@ def run_agent():
 								target_failures[target] = target_failures.get(target, 0) + 1
 								if target_failures[target] >= MAX_TARGET_FAILS:
 									blocked_targets.add(target)
-									print(f"🚫 반복 실패 타겟 차단: {target}")
+									print(f"BLOCK repeated failed target: {target}")
 
 					if signature_failures.get(signature, 0) >= MAX_SIGNATURE_FAILS:
 						history.append(
@@ -986,17 +1003,17 @@ def run_agent():
 					summary_text = ask_summary(summary_image_path, task, history)
 					summary_duration_ms = int((time.perf_counter() - summary_started) * 1000)
 
-					print(f"\n📝 요약 생성({summary_duration_ms}ms)")
+					print(f"\nSUMMARY generated ({summary_duration_ms}ms)")
 					print("===== TASK SUMMARY =====")
 					print(summary_text)
-					print("✅ TASK 완료")
+					print("TASK completed")
 					break
 
 				page.wait_for_timeout(SHORT_WAIT_MS)
 	finally:
 		total_duration_ms = int((time.perf_counter() - total_started) * 1000)
 		total_duration_sec = total_duration_ms / 1000.0
-		print(f"\n⏱️ TOTAL RUNTIME: {total_duration_ms}ms ({total_duration_sec:.2f}s)")
+		print(f"\nTOTAL RUNTIME: {total_duration_ms}ms ({total_duration_sec:.2f}s)")
 
 
 if __name__ == "__main__":
