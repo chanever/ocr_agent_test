@@ -1,11 +1,7 @@
 # Computer Use Agent Research Prototype
+his project implements a browser-based **Computer Use Agent (CUA)** prototype and compares it with a text-based LLM agent on web surfing tasks.
 
-Research meeting: 2026-04-16  
-Author: Jeong Haechan
-
-This project implements a browser-based **Computer Use Agent (CUA)** prototype and compares it with a text-based LLM agent on web surfing tasks.
-
-The main research question is:
+The main research question is
 
 ```text
 How does a text-based LLM agent differ from a vision-based LLM agent
