@@ -1,272 +1,353 @@
-# Vision Web Agent vs Pure LLM
+# Computer Use Agent Research Prototype
 
-This project explores the difference between **Pure LLM reasoning** and **Vision-based Web Agents** when retrieving information from the internet.
+Research meeting: 2026-04-16  
+Author: Jeong Haechan
 
-The goal is to compare how different systems perform when solving real-world web tasks.
+This project implements a browser-based **Computer Use Agent (CUA)** prototype and compares it with a text-based LLM agent on web surfing tasks.
+
+The main research question is:
+
+```text
+How does a text-based LLM agent differ from a vision-based LLM agent
+when solving real-world web search and browsing tasks?
+```
 
 ---
 
-# Project Goal
+## Project Overview
 
-Compare the capabilities of the following systems:
+This project compares two agent types:
 
+```text
+1. Pure LLM Agent
+2. Vision-based Computer Use Agent
 ```
-1. Pure LLM (LLM only)
-2. Vision Web Agent (Browser + Screenshot + GPT Vision)
+
+The goal is to copy, as closely as possible, how a human performs web search:
+
+```text
+Open a browser
+Look at the current page
+Decide what to click or type
+Interact with the page
+Repeat until the task is complete
 ```
 
-We investigate how well each system performs tasks that require:
-
-- Web navigation
-- Visual reasoning
-- Interaction with websites
+The implemented agent uses Playwright to run a real browser. At every step, it captures a screenshot of the current webpage and sends it to GPT. GPT then reasons over the screenshot and chooses the next action, such as `click`, `type`, `scroll`, or `stop`.
 
 ---
 
-# System Overview
+## Research Motivation
 
-## 1. Pure LLM
+Many LLM agents can answer questions using internal knowledge or text-based search tools. However, real web tasks often require more than text retrieval.
+
+Real websites require:
+
+- Visual understanding
+- Page navigation
+- Interaction with dynamic UI elements
+- Multi-step reasoning
+- Task termination after finding the needed information
+
+This project investigates how a vision-based web agent behaves in these situations compared with a pure text-based LLM.
+
+---
+
+## Compared Systems
+
+| System | Description | Web Interaction |
+| --- | --- | --- |
+| Pure LLM Agent | Uses only the LLM's internal knowledge | No |
+| Vision CUA | Uses browser screenshots and browser actions | Yes |
+
+---
+
+## 1. Pure LLM Agent
 
 File:
 
-```
+```text
 pure_gpt5.py
 ```
 
-Architecture
+Architecture:
 
-```
-Python
+```text
+User task
 ↓
 GPT-5 API
 ↓
 Text response
 ```
 
-Characteristics
+Characteristics:
 
 - No browser
-- No web navigation
-- No screenshots
-- No real-time data access
-- Only uses the model's internal knowledge
+- No webpage screenshots
+- No DOM access
+- No direct web navigation
+- Cannot interact with websites
+- Relies only on the model's internal knowledge
 
-Example prompt:
+Example task:
 
+```text
+Find the current USD to KRW exchange rate.
 ```
-What is the USD to KRW exchange rate?
-```
 
-Typical response:
+Expected behavior:
 
-```
-I can’t access real-time data.
+```text
+The model may explain that it cannot access real-time information.
 ```
 
 This system represents:
 
-```
-LLM knowledge only
+```text
+LLM reasoning without external webpage interaction
 ```
 
 ---
 
-## 2. Vision Web Agent
+## 2. Vision-based Computer Use Agent
 
 File:
 
-```
+```text
 agent.py
 ```
 
-Architecture
+Architecture:
 
-```
+```text
 Playwright Browser
 ↓
 Webpage Screenshot
 ↓
-GPT Vision
+GPT Vision Reasoning
 ↓
 JSON Action
 ↓
 Playwright Execution
 ↓
-Loop
-```
-
-Execution flow
-
-```
-Browser start
-↓
-Open webpage
-↓
-Screenshot
-↓
-Send screenshot to GPT
-↓
-GPT returns action
-↓
-Playwright executes action
-↓
 Repeat
 ```
 
-Pseudo workflow
+Execution flow:
 
+```text
+Start browser
+↓
+Open webpage
+↓
+Capture screenshot
+↓
+Send screenshot and task history to GPT
+↓
+GPT decides the next action
+↓
+Playwright executes the action
+↓
+Repeat until GPT returns stop
 ```
-forstepinrange(N):
 
-screenshot()
+Pseudo workflow:
 
-action=ask_gpt()
+```python
+for step in range(max_steps):
+    screenshot = capture_screenshot()
+    action = ask_gpt(task, history, screenshot)
+    execute_action(action)
 
-execute_action()
-
-ifaction==stop:
-break
+    if action["action"] == "stop":
+        break
 ```
 
 ---
 
-# Agent Input Structure
+## Difference from OpenAI CUA Framework
 
-The agent provides GPT with three pieces of information:
+OpenAI's CUA framework is commonly described as a general computer-using agent that can operate through visual observation and computer actions.
 
+This project implements a browser-based Computer Use Agent with a more specific interaction method:
+
+```text
+Instead of performing tasks only through raw screen coordinates,
+the agent uses Playwright to find clickable HTML elements from the webpage.
 ```
+
+The agent still reasons from the current screenshot, but its actual browser actions are executed through Playwright APIs.
+
+In other words:
+
+```text
+Screenshot → GPT reasoning → action decision → DOM-based Playwright execution
+```
+
+This makes the prototype different from a purely coordinate-based CUA. The agent sees the page visually, decides what part of the page is relevant, and then attempts to interact with clickable objects exposed by the webpage structure.
+
+---
+
+## Agent Input Structure
+
+At every step, the agent sends GPT three pieces of information:
+
+```text
 1. Task description
-2. Previous actions (history)
-3. Screenshot of the webpage
+2. Previous actions
+3. Screenshot of the current webpage
 ```
 
-Example prompt sent to GPT:
+Example prompt:
 
-```
+```text
 Task:
-Search Amazon for a product and find its reviews.
+Search Amazon for a product and find its customer reviews.
 
 Previous actions:
-STEP 1: type search query
-STEP 2: click product
+STEP 1: typed search query
+STEP 2: clicked product page
 
 Look at the screenshot and decide the next action.
 ```
 
 ---
 
-# Agent Action Space
+## Agent Action Space
 
-The agent currently supports four actions:
+The current agent supports the following actions:
 
-```
+```text
 click_text
 type
 scroll
 stop
 ```
 
-Example response from GPT:
+Example GPT response:
 
-```
+```json
 {
- "action":"click_text",
- "target":"Customer reviews"
+  "action": "click_text",
+  "target": "Customer reviews"
 }
 ```
 
+Action meanings:
+
+| Action | Meaning |
+| --- | --- |
+| `click_text` | Click an element containing the target text |
+| `type` | Type text into an input field |
+| `scroll` | Scroll the page |
+| `stop` | Terminate the task |
+
 ---
 
-# Browser Automation
+## Browser Automation
 
 Browser control is implemented using **Playwright**.
 
 Browser startup:
 
-```
-context=p.chromium.launch_persistent_context(
-user_data_dir="chrome_profile",
-headless=False,
-args=[
-"--start-maximized",
-"--disable-blink-features=AutomationControlled"
+```python
+context = p.chromium.launch_persistent_context(
+    user_data_dir="chrome_profile",
+    headless=False,
+    args=[
+        "--start-maximized",
+        "--disable-blink-features=AutomationControlled",
     ],
-viewport=None
+    viewport=None,
 )
 ```
 
-Why persistent context?
+Why use a persistent browser context?
 
-```
-- Maintain session
-- Store cookies
-- Reduce bot detection
+```text
+1. Maintain browser sessions
+2. Store cookies
+3. Reduce repeated login or verification steps
+4. Make browser behavior closer to normal human browsing
 ```
 
 ---
 
-# Screenshot → GPT Vision
+## Screenshot to GPT Vision
 
-Each step captures a screenshot of the webpage.
+Each step captures a screenshot of the current webpage:
 
-```
+```python
 page.screenshot(path="screen.png")
 ```
 
-The screenshot is encoded to base64 and sent to GPT:
+The screenshot is encoded as base64 and sent to GPT:
 
+```python
+with open(image_path, "rb") as f:
+    base64_image = base64.b64encode(f.read()).decode()
 ```
-withopen(image_path,"rb")asf:
-base64_image=base64.b64encode(f.read()).decode()
-```
+
+GPT uses this image to understand:
+
+- What page is currently open
+- Which elements are visible
+- Where the user should interact next
+- Whether the task has been completed
 
 ---
 
-# Action Execution
+## Action Execution
 
-Playwright maps GPT actions to browser operations.
+GPT returns a structured JSON action. Playwright maps that action to a browser operation.
 
+```text
+click_text → page.get_by_text(target).click()
+type       → fill textbox and press Enter
+scroll     → page.mouse.wheel()
+stop       → terminate loop
 ```
-click_text → page.get_by_text().click()
-
-type → search box input
-
-scroll → mouse wheel
-
-stop → terminate agent
-```
-
----
-
-# Search Box Handling
-
-Initial implementation used fixed selectors.
 
 Example:
 
+```python
+if action["action"] == "click_text":
+    page.get_by_text(action["target"]).click()
 ```
-page.fill('textarea[name="q"]',text)
+
+This creates the core CUA loop:
+
+```text
+Observe → Reason → Act → Observe again
+```
+
+---
+
+## Search Box Handling
+
+The initial implementation used fixed selectors:
+
+```python
+page.fill('textarea[name="q"]', text)
 ```
 
 Problem:
 
-```
-Each website uses different selectors.
+```text
+Different websites use different selectors for search boxes.
 ```
 
-Solution:
+Current approach:
 
-Automatically detect search inputs.
-
-```
-box=page.get_by_role("textbox").first
+```python
+box = page.get_by_role("textbox").first
 box.fill(text)
 page.keyboard.press("Enter")
 ```
 
-This works on most websites:
+This works better across websites such as:
 
-```
+```text
 Google
 Amazon
 Bing
@@ -275,247 +356,211 @@ DuckDuckGo
 
 ---
 
-# Web Search vs Vision Agent
+## Example Task
 
-Three main approaches exist.
+Example web browsing task:
 
-| System | Capability |
-| --- | --- |
-| LLM only | knowledge-based |
-| LLM + web_search | search engine access |
-| Vision Agent | visual webpage interaction |
-
----
-
-# OpenAI Web Search Tool
-
-OpenAI provides a `web_search` tool.
-
-Example usage:
-
-```
-response=client.responses.create(
-model="gpt-5",
-tools=[{"type":"web_search"}],
-input="Find the current USD KRW exchange rate."
-)
-```
-
-Architecture:
-
-```
-LLM
-↓
-Search query generation
-↓
-Search engine
-↓
-Answer synthesis
-```
-
----
-
-# Experiment Tasks
-
-To evaluate the difference between systems, tasks were designed that require **visual interaction with webpages**.
-
-Example Task:
-
-```
-Search Amazon for
+```text
+Search Amazon for:
 "SAMSUNG 32-Inch Class Full HD F6000 Smart TV"
 
 Open the product page.
-
 Find customer reviews.
-
 Summarize the reviews.
 ```
 
-Expected results:
+Expected comparison:
 
-| System | Result |
+| System | Expected Result |
 | --- | --- |
-| Pure LLM | ❌ Cannot access webpage |
-| Vision Agent | ✅ Can navigate and read reviews |
+| Pure LLM Agent | Cannot directly access or inspect the current webpage |
+| Vision CUA | Can open the website, navigate visually, and search for review information |
 
 ---
 
-# Performance Comparison
+## Performance Comparison
 
-Execution time comparison:
+Typical execution time:
 
 | System | Typical Time |
 | --- | --- |
-| Pure LLM | 1–2 seconds |
-| Vision Agent | 20–60 seconds |
+| Pure LLM Agent | 1-2 seconds |
+| Vision CUA | 20-60 seconds |
 
-Reason:
+The Vision CUA is slower because it requires:
 
-```
+```text
 Browser rendering
 Screenshot capture
-Vision inference
-Multiple reasoning steps
+Vision model inference
+Multiple reasoning and action steps
 ```
 
 ---
 
-# Limitations
+## Limitations
 
-Current Vision Agent has several limitations:
+The current agent is a minimal research prototype and has several limitations.
 
 ### 1. Text-based clicking
 
-```
+Current implementation:
+
+```python
 page.get_by_text(target).click()
 ```
 
-This often fails when:
+This can fail when:
 
-```
-- Text not visible
-- Multiple elements share same text
+```text
+1. The target text is not visible
+2. Multiple elements contain the same text
+3. The visual target does not match the DOM text exactly
+4. The element is hidden, delayed, or blocked by another UI layer
 ```
 
 ### 2. Limited action space
 
 Current actions:
 
-```
+```text
 click_text
 type
 scroll
 stop
 ```
 
-Missing actions:
+Missing useful actions:
 
-```
+```text
 go_back
 open_url
 click_selector
+click_coordinates
+wait
+extract_text
 ```
 
 ### 3. Bot detection
 
-Sites like:
+Some websites may trigger CAPTCHA or bot detection, especially:
 
-```
+```text
 Amazon
 Google
 ```
 
-may trigger CAPTCHA.
+### 4. No robust task evaluation
+
+The current prototype focuses on implementation and qualitative comparison. It does not yet include a full benchmark or automated scoring system.
 
 ---
 
-# Future Improvements
+## Future Improvements
 
-The current agent is a **minimal research prototype**.
+### 1. DOM and vision hybrid agent
 
-Future improvements include:
+Provide both screenshot and DOM information to GPT:
 
-### 1. DOM + Vision hybrid agent
-
-Provide both:
-
-```
+```text
 Screenshot
-HTML DOM
+HTML DOM tree
+Clickable element list
 ```
 
-to the LLM.
-
----
+This would allow the model to reason from visual context while selecting more reliable browser actions.
 
 ### 2. Set-of-Marks prompting
 
-Used in research systems like:
-
-```
-VisualWebArena
-WebVoyager
-SeeAct
-```
+Use visual labels for clickable elements, as seen in web agent research.
 
 Example:
 
-```
+```text
 [1] Search
 [2] Login
 [3] Add to Cart
 ```
 
-LLM selects actions via IDs.
+The LLM can then select an element by ID instead of guessing text.
 
----
+Related systems:
+
+```text
+VisualWebArena
+WebVoyager
+SeeAct
+```
 
 ### 3. Element bounding box clicking
 
-Instead of text matching.
+Instead of relying only on text matching, the agent could click elements by visual region or bounding box.
 
-```
-click element by visual region
+```text
+GPT selects a visual target
+↓
+System maps target to element bounding box
+↓
+Playwright clicks the element
 ```
 
-This significantly improves reliability.
+This would improve reliability for pages where the visible UI and DOM text are difficult to align.
+
+### 4. Better task termination
+
+The agent should more reliably decide when enough information has been found and when the task should terminate.
 
 ---
 
-# Research Context
+## Research Context
 
-This project relates to research areas including:
+This project relates to:
 
-```
+```text
 LLM Agents
+Computer Use Agents
 Web Automation
 Multimodal Reasoning
 Human-Computer Interaction
 ```
 
-Similar benchmarks:
+Related benchmarks and systems:
 
-```
+```text
 WebArena
 VisualWebArena
 WebVoyager
+SeeAct
+OpenAI CUA
 ```
 
 ---
 
-# Project Structure
+## Project Structure
 
-```
-vision-agent-experiment/
-
-agent.py
-pure_gpt5.py
-README.md
-chrome_profile/
-
-screenshots/
+```text
+ocr_agent_test/
+├── agent.py
+├── pure_gpt5.py
+├── readme.md
+├── chrome_profile/
+└── screenshots/
 ```
 
 ---
 
-# Summary
+## Summary
 
-This project compares:
-
-```
-LLM knowledge
-vs
-LLM + Web Search
-vs
-Vision Web Agent
-```
+This project implements a browser-based Computer Use Agent and compares it with a pure LLM agent.
 
 Key takeaway:
 
-```
-Pure LLM → cannot access real-world webpages
-Vision Agent → can interact with websites visually
+```text
+Pure LLM Agent:
+Fast, but cannot directly inspect or interact with current webpages.
+
+Vision CUA:
+Slower, but can visually observe webpages and perform multi-step browser actions.
 ```
 
-Vision-based agents open the door for **true web automation using LLMs**.
+The implemented prototype is not a full coordinate-based desktop CUA. It is a browser-based CUA that combines screenshot-based GPT reasoning with Playwright-based DOM interaction.
